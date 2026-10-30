@@ -3,7 +3,7 @@ package main
 import "testing"
 
 func TestRejectInvalidRuntimeSettings(t *testing.T) {
-	for _, key := range []string{"PORT", "ICE_TCP_PORT", "CS16_START_MAP", "CS16_MAXPLAYERS", "CS16_ALLOWED_ORIGINS"} {
+	for _, key := range []string{"PORT", "ICE_TCP_PORT", "CS16_START_MAP", "CS16_MAXPLAYERS", "CS16_ALLOWED_ORIGINS", "CS16_PLAYER_BROKER_TOKEN"} {
 		t.Setenv(key, "")
 	}
 	t.Setenv("CS16_ADMIN_TOKEN", testAdminToken)
@@ -15,6 +15,7 @@ func TestRejectInvalidRuntimeSettings(t *testing.T) {
 		{"CS16_MAXPLAYERS", "1"}, {"CS16_MAXPLAYERS", "17"},
 		{"PORT", "08443"}, {"ICE_TCP_PORT", "027016"}, {"PORT", "65536"},
 		{"CS16_ALLOWED_ORIGINS", "*"}, {"CS16_ADMIN_TOKEN", "short"},
+		{"CS16_PLAYER_BROKER_TOKEN", "short"}, {"CS16_PLAYER_BROKER_TOKEN", testAdminToken},
 	} {
 		t.Run(check.key+"="+check.value, func(t *testing.T) {
 			t.Setenv(check.key, check.value)

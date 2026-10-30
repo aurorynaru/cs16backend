@@ -192,14 +192,40 @@ Railway diagnostics:
   ends. A closure after `PASS_GAME_QUERY` and slot cleanup does not undo the query
   result; inspect the preceding connection/query messages before diagnosing it.
 
-## Step 2 boundary
+## Mongoose player access (BLD-012)
 
-The existing Global-Strike launcher still uses the author's host/ticket scheme.
-This package does not redirect it. The admin diagnostic's session endpoint is
-not yet a player-login integration. Step 2 must issue scoped player access and
-asset access without embedding the backend admin secret in browser/Mongoose
-source, then adapt the client endpoint and handshake. Two-player in-map testing
-remains step 3. Keep the working launcher and original probe as references.
+The Mongoose launcher uses a separate trusted player broker. Add a new private
+random Railway variable `CS16_PLAYER_BROKER_TOKEN` (at least 32 characters,
+different from `CS16_ADMIN_TOKEN`). Keep it only in Railway Variables and the
+Infor API Gateway target credential, never in form script, HTML or JavaScript.
+Leaving it unset keeps the existing local preview/admin diagnostic working and
+disables Mongoose grant issuance.
+
+Set `CS16_ALLOWED_ORIGINS=https://mgapse1ap.mtmgf.se1.mongoosepaas.io` for this
+tenant. Retain any other exact origins that you still need, separated by commas.
+
+Create the factory-owned `FX_CS16Railway` API suite in Infor API Gateway:
+
+- API context `FX_CS16Railway`, proxy context `game`, target this service's HTTPS
+  root. The displayed public URL includes `/CustomerApi/FX_CS16Railway/game`.
+- Proxy security **OAuth 2.0**, certificate validation enabled.
+- Target authentication **API Key**, mode **Header**, name `Authorization`,
+  value `Bearer ` followed by the separate player broker token.
+
+The form calls `IONAPIMethods.InvokeIONAPIMethod2` with SSO, API context
+`CustomerApi`, POST path `/FX_CS16Railway/game/api/player-launch`. This endpoint
+requires the broker credential and returns only a 60-second, single-use
+WebSocket ticket plus a separate 60-second asset lease for HEAD/GET. Active game
+sessions do not expire after this handshake window. The broker credential cannot
+call the admin status/session/asset endpoints. Asset access requires both a
+valid lease and an allowed browser origin. ETag headers are exposed for client
+cache validation, including updated custom maps.
+
+Install the accompanying `FX_CS16` WUC adapter and `FX_CS16PORTAL` User form
+script/temporary global variable from the parent workspace. Those files contain
+no permanent credential. Live SSO issuance, first asset download and two-player
+gameplay still require verification after this backend revision is deployed
+and the API Gateway credential is configured.
 
 ## Upstream attribution
 

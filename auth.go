@@ -54,3 +54,16 @@ func (t *tickets) consume(key string) bool {
 	delete(t.values, key)
 	return exists && expiry.After(t.now())
 }
+
+// Asset leases permit HEAD and GET during the existing handshake window. They
+// live in a separate store from the single-use WebSocket admission tickets.
+func (t *tickets) valid(key string) bool {
+	t.Lock()
+	defer t.Unlock()
+	expiry, exists := t.values[key]
+	if !exists || !expiry.After(t.now()) {
+		delete(t.values, key)
+		return false
+	}
+	return true
+}

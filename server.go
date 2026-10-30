@@ -28,6 +28,7 @@ type gateway struct {
 	upstream          string
 	ready             func(context.Context) error
 	tickets           *tickets
+	assetTickets      *tickets
 	slots             chan struct{}
 	sequence          atomic.Uint64
 	sessions          sync.Map
@@ -179,6 +180,8 @@ func (g *gateway) handler() http.Handler {
 	})
 	mux.HandleFunc("GET /api/status", g.authorized(g.status))
 	mux.HandleFunc("POST /api/session", g.authorized(g.issueSession))
+	mux.HandleFunc("POST /api/player-launch", g.authorizedPlayerBroker(g.playerLaunch))
+	mux.HandleFunc("GET /player/gamefiles.zip", g.playerGameFiles)
 	mux.HandleFunc("GET /cs16/dust2/websocket", g.websocket)
 	// Deliberately a fixed asset route: no configs or generic filesystem access.
 	mux.HandleFunc("GET /cs16/gamefiles.zip", g.authorized(g.gameFiles))
@@ -193,6 +196,7 @@ func (g *gateway) handler() http.Handler {
 			w.Header().Add("Vary", "Origin")
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, POST, OPTIONS")
+			w.Header().Set("Access-Control-Expose-Headers", "ETag, Content-Range, Accept-Ranges")
 			if r.Method == http.MethodOptions {
 				w.WriteHeader(204)
 				return
@@ -205,7 +209,7 @@ func (g *gateway) handler() http.Handler {
 func newGateway(ctx context.Context, c config, frontAPI *webrtc.API) *gateway {
 	slots, _ := strconv.Atoi(c.maxPlayers)
 	g := &gateway{config: c, ctx: ctx, frontAPI: frontAPI, backAPI: newBackAPI(), endpoint: publicEndpoint,
-		upstream: "ws://127.0.0.1:27016/websocket", tickets: newTickets(), slots: make(chan struct{}, slots)}
+		upstream: "ws://127.0.0.1:27016/websocket", tickets: newTickets(), assetTickets: newTickets(), slots: make(chan struct{}, slots)}
 	g.ready = g.privateEndpointReady
 	return g
 }

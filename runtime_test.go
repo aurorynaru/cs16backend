@@ -8,7 +8,7 @@ import (
 )
 
 func TestNativeChildDoesNotInheritAdminOrPublicPort(t *testing.T) {
-	environment := childEnvironment([]string{"CS16_ADMIN_TOKEN=test-private", "PORT=8080", "IP=public", "RAILWAY_TOKEN=test-private", "PUBLIC_ICE_PORT=13603", "LD_LIBRARY_PATH=/xashds", "PATH=/usr/bin"})
+	environment := childEnvironment([]string{"CS16_ADMIN_TOKEN=test-private", "CS16_PLAYER_BROKER_TOKEN=test-private", "PORT=8080", "IP=public", "RAILWAY_TOKEN=test-private", "PUBLIC_ICE_PORT=13603", "LD_LIBRARY_PATH=/xashds", "PATH=/usr/bin"})
 	joined := strings.Join(environment, "\n")
 	if strings.Contains(joined, "test-private") || strings.Contains(joined, "8080") || strings.Contains(joined, "13603") {
 		t.Fatal("native child inherited gateway secrets or public settings")
