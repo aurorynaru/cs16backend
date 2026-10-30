@@ -4,3 +4,5 @@
 *.exe
 *.log
 README.md
+**/__pycache__
+**/*.pyc
