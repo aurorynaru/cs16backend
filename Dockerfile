@@ -38,6 +38,13 @@ RUN mkdir -p /out \
     go build -trimpath -o /out/xash ./server
 RUN printf '%s\n' '{"repair":"FX_CS16_NET_SENDLONG_FREE_V1","engine":"d3bc7fabeea8586f38a501b4cc6233fa0545f5f0","wrapper":"90b4aa816099db3c45cfa01dd8246f12473bce22"}' > /out/FX_CS16_native_build.json
 
+# Map-only changes reuse the repaired native-build cache.
+FROM native-build AS content-build
+COPY --from=game /xashds/public/gamefiles.zip /base/gamefiles.zip
+COPY custom-maps/cstrike /custom/cstrike
+COPY scripts/package_maps.py /package_maps.py
+RUN python3 /package_maps.py --base-zip /base/gamefiles.zip --custom /custom/cstrike --output /content
+
 FROM golang:1.25-bookworm AS build
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -54,6 +61,9 @@ RUN dpkg --add-architecture i386 \
 COPY --from=game --chown=10001:10001 /xashds /xashds
 COPY --from=native-build --chown=10001:10001 /out/xash /out/FX_CS16_native_build.json /xashds/
 COPY --from=native-build --chown=10001:10001 /native-src/engine/build/filesystem/filesystem_stdio.so /xashds/filesystem_stdio.so
+COPY --from=content-build --chown=10001:10001 /content/server/ /xashds/
+COPY --from=content-build --chown=10001:10001 /content/gamefiles.zip /content/gamefiles.sha256 /xashds/public/
+COPY --from=content-build --chown=10001:10001 /content/custom-maps.json /xashds/FX_CS16_custom_maps.json
 COPY --from=build /gateway /usr/local/bin/FX_CS16_backend
 ENV PORT=8080 ICE_TCP_PORT=8443 XASH3D_BASEDIR=/xashds LD_LIBRARY_PATH=/xashds
 WORKDIR /xashds

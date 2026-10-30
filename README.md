@@ -4,14 +4,69 @@ Step 1 package: a CS 1.6/Xash3D game runtime behind the ICE-TCP transport observ
 working in BLD-005. This is a separate backend service. It does not modify the
 existing Mongoose launcher or include the Global-Strike browser client.
 
+## Repair an existing deployment: native packet double-free
+
+BLD-010 fixes a confirmed bug in the prebuilt native engine revision. Its
+NET_SendLong allocated one block for split packets, freed it, and then freed
+the individual pointers into that same block. AddressSanitizer reproduced the
+double-free in the exact pinned function. The targeted repair removes those
+invalid individual frees and returns an error on allocation failure. The fixed
+function passed 2,012 payload and cleanup cases, including failed allocations.
+
+For the existing cs16backend GitHub repository:
+
+1. Replace the repository-root `Dockerfile` and `.dockerignore`, and add the
+   complete `native/` directory from this updated package. Keep its directory
+   structure. The full archive can also replace the existing source contents.
+2. Deploy that new GitHub revision on Railway. Restarting the old deployment
+   leaves its faulty native executable in place. Keep the existing token,
+   HTTPS domain, TCP proxy and variables, including the explicit public ICE
+   hostname/port when configured.
+3. In Build Logs, confirm `REPRODUCED_ORIGINAL_NET_SENDLONG_DOUBLE_FREE`,
+   `PASS_NET_SENDLONG_OWNERSHIP`, and `FX_CS16_NET_SENDLONG_FREE_V1 applied`.
+   The original failure in that build test is expected; the harness requires
+   the repaired version to pass before compiling the new engine.
+4. After startup, reload/rejoin both local clients. Play together, have one
+   leave and rejoin, and keep the other connected beyond the previous 65-second
+   timeout window. Confirm that the service stays up and no allocator error
+   appears. This live multiplayer regression remains required.
+
+The Dockerfile now builds the matching pinned engine and CGO wrapper from their
+surviving upstream repositories, applies a source-checksummed repair, and copies
+the rebuilt ELF32 executable and filesystem library into the final image. Game
+assets still come from the existing pinned image. Native source/build identity
+is recorded at `/xashds/FX_CS16_native_build.json`. Native build parallelism is
+limited to two jobs to bound build memory use. The first native rebuild takes
+longer than using the old prebuilt executable.
+
+Local verification reproduced and fixed the actual C allocation function; a
+full Docker build was not performed locally because Docker is unavailable.
+The Railway build and real leave/rejoin test above therefore remain pending.
+The source patch is verified; full deployment/gameplay is not yet claimed fixed.
+
 ## Deploy
 
+This package now includes the operator-supplied **cs_deathmatch** custom map.
+For an existing repository, upload the updated source contents at its root,
+including `Dockerfile`, `server.go`, new `assets.go`, `custom-maps/`, and the
+updated `scripts/`. Keep the `native/` repair folder from the previous release.
+The full source ZIP contains all required files. Deploy the new revision, then
+set `CS16_START_MAP=cs_deathmatch` and apply that variable change. A suggested
+initial player limit is `CS16_MAXPLAYERS=12` (six spawn points per team).
+
+Reload local clients after deployment. The new bundle ETag refreshes browser
+game-data caches; first join may download the game data again. The supplied
+fy_pool_day_reloaded file is a Source BSP 20 map and is excluded. A CS 1.6 version
+is required. Details and the original map README are in `custom-maps/`.
+
 1. Create a separate GitHub repository. Upload this folder's **contents**, with
-   `Dockerfile`, `go.mod`, `go.sum`, Go source/tests, and `public/` at its root.
+   `Dockerfile`, `go.mod`, `go.sum`, Go source/tests, `native/`, `custom-maps/`,
+   `scripts/` and `public/` at its root.
 2. Railway: **New Project → Deploy from GitHub repo**, or add a new GitHub service
    to your existing project. Select that repository. Use the Dockerfile; leave
    start/build overrides empty. The pinned upstream game image is about **940 MB
    compressed**, so its first pull/build is larger than the connection probe.
+   This version also compiles the repaired native engine from pinned source.
 3. Set these Railway Variables:
 
    | Variable | Initial value |
@@ -69,8 +124,9 @@ liveness. The engine process exiting stops the gateway so Railway can restart it
 
 - Pinned source image manifest:
   `ghcr.io/balintsoos/cs16-web-server@sha256:75a410e3406cbc525329df93216c740ca76d92d45b0da7e850ef762b4f106148`.
-- Its `/xashds` runtime is copied from linux/386 into a linux/amd64 Debian image
-  with i386 libraries. No 32-bit game executable runs during the Docker build.
+- Its `/xashds` data is copied from linux/386 into a linux/amd64 Debian image
+  with i386 libraries. The matching engine and wrapper are rebuilt with the
+  targeted native memory repair; no 32-bit game executable runs during the build.
   A static file check verifies ELF32/i386, the game library, ZIP and selected map.
 - The amd64 Go gateway supervises the 32-bit game process. The game keeps private
   HTTP 27016 and UDP 27018; only the gateway's HTTP 8080 and ICE-TCP 8443 are exposed.
@@ -100,7 +156,9 @@ Packaging check completed locally: the **actual pinned native engine** loaded
 `de_dust2` and answered its protocol-49 info query through the full TCP gateway
 path in WSL. Local Go checks, three browser-parser tests, and the Linux amd64
 gateway build passed. The full Docker build and Railway execution are still
-pending; this is not yet a deployed game server or a Mongoose integration result.
+pending in that original check. Subsequent operator logs establish Railway
+startup and a native timeout crash; see the repair section above for the current
+candidate, its regression evidence and the remaining live checks.
 
 With Go 1.23+:
 

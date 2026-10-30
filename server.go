@@ -9,7 +9,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"path/filepath"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -181,10 +180,8 @@ func (g *gateway) handler() http.Handler {
 	mux.HandleFunc("GET /api/status", g.authorized(g.status))
 	mux.HandleFunc("POST /api/session", g.authorized(g.issueSession))
 	mux.HandleFunc("GET /cs16/dust2/websocket", g.websocket)
-	mux.HandleFunc("GET /cs16/gamefiles.zip", g.authorized(func(w http.ResponseWriter, r *http.Request) {
-		// Deliberately no generic filesystem/reverse proxy: no configs or secrets.
-		http.ServeFile(w, r, filepath.Join(g.config.gameDir, "public", "gamefiles.zip"))
-	}))
+	// Deliberately a fixed asset route: no configs or generic filesystem access.
+	mux.HandleFunc("GET /cs16/gamefiles.zip", g.authorized(g.gameFiles))
 	files, _ := fs.Sub(publicFiles, "public")
 	mux.Handle("GET /", http.FileServer(http.FS(files)))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

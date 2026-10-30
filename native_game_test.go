@@ -81,7 +81,8 @@ func TestNativeGameInfoThroughTCPGateway(t *testing.T) {
 	}
 	_ = udpCheck.Close()
 	ctx, cancel := context.WithCancel(context.Background())
-	c := config{gameDir: dir, mapName: "de_dust2", maxPlayers: "16"}
+	mapName := env("CS16_TEST_MAP", "de_dust2")
+	c := config{gameDir: dir, mapName: mapName, maxPlayers: "16"}
 	game, err := startGame(ctx, c)
 	if err != nil {
 		cancel()
@@ -127,17 +128,17 @@ func TestNativeGameInfoThroughTCPGateway(t *testing.T) {
 		}
 		packet = receivePacket(t, client)
 	}
-	name, mapName, folder, valid := parseGameInfo(packet)
-	if !valid || mapName != "de_dust2" || folder != "cstrike" || deployment.proxyConnections.Load() == 0 {
+	name, loadedMap, folder, valid := parseGameInfo(packet)
+	if !valid || loadedMap != mapName || folder != "cstrike" || deployment.proxyConnections.Load() == 0 {
 		var command byte
 		if len(packet) > 4 {
 			command = packet[4]
 		}
-		t.Fatalf("no valid native CS info reply via TCP: bytes=%d command=%q map=%q folder=%q", len(packet), command, mapName, folder)
+		t.Fatalf("no valid native CS info reply via TCP: bytes=%d command=%q map=%q folder=%q", len(packet), command, loadedMap, folder)
 	}
 	pair, err := client.peer.SCTP().Transport().ICETransport().GetSelectedCandidatePair()
 	if err != nil || pair == nil || pair.Remote.Protocol.String() != "tcp" {
 		t.Fatal("native query bypassed the public-side TCP path")
 	}
-	t.Logf("ACTUAL_GAME_QUERY_PASS: name=%q map=%q folder=%q, TCP proxy connections=%d", name, mapName, folder, deployment.proxyConnections.Load())
+	t.Logf("ACTUAL_GAME_QUERY_PASS: name=%q map=%q folder=%q, TCP proxy connections=%d", name, loadedMap, folder, deployment.proxyConnections.Load())
 }
