@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -40,6 +41,28 @@ func TestRuntimeConfigIsOwnedAndIdempotent(t *testing.T) {
 	owned, _ := os.ReadFile(filepath.Join(dir, "cstrike", "FX_CS16_server.cfg"))
 	if !strings.Contains(string(owned), "rcon_password") || !strings.Contains(string(owned), `hostname "FX_CS16"`) {
 		t.Fatal("owned runtime configuration missing")
+	}
+}
+
+func TestRuntimeConfigUsesConfiguredRconPassword(t *testing.T) {
+	for _, password := range []string{"pass", ""} {
+		dir := t.TempDir()
+		if err := os.Mkdir(filepath.Join(dir, "cstrike"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "cstrike", "server.cfg"), nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := prepareRuntimeConfig(config{gameDir: dir, rconPassword: password}); err != nil {
+			t.Fatal(err)
+		}
+		owned, _ := os.ReadFile(filepath.Join(dir, "cstrike", "FX_CS16_server.cfg"))
+		if password != "" && !strings.Contains(string(owned), `rcon_password "pass"`) {
+			t.Fatal("configured rcon password not written")
+		}
+		if password == "" && !regexp.MustCompile(`rcon_password "[0-9a-f]{64}"`).Match(owned) {
+			t.Fatal("unset rcon password did not fall back to a random value")
+		}
 	}
 }
 

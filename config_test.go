@@ -1,21 +1,32 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestRejectInvalidRuntimeSettings(t *testing.T) {
-	for _, key := range []string{"PORT", "ICE_TCP_PORT", "CS16_START_MAP", "CS16_MAXPLAYERS", "CS16_ALLOWED_ORIGINS", "CS16_PLAYER_BROKER_TOKEN"} {
+	for _, key := range []string{"PORT", "ICE_TCP_PORT", "CS16_START_MAP", "CS16_MAXPLAYERS", "CS16_ALLOWED_ORIGINS", "CS16_PLAYER_BROKER_TOKEN", "CS16_RCON_PASSWORD"} {
 		t.Setenv(key, "")
 	}
 	t.Setenv("CS16_ADMIN_TOKEN", testAdminToken)
 	if _, err := loadConfig(); err != nil {
 		t.Fatal(err)
 	}
+	// Operator decision (BLD-024): a simple rcon password is allowed.
+	t.Setenv("CS16_RCON_PASSWORD", "pass")
+	if c, err := loadConfig(); err != nil || c.rconPassword != "pass" {
+		t.Fatal("simple rcon password rejected:", err)
+	}
+	t.Setenv("CS16_RCON_PASSWORD", "")
 	for _, check := range []struct{ key, value string }{
 		{"CS16_START_MAP", "../../outside"}, {"CS16_START_MAP", "de_dust2 +exec outside"},
 		{"CS16_MAXPLAYERS", "1"}, {"CS16_MAXPLAYERS", "17"},
 		{"PORT", "08443"}, {"ICE_TCP_PORT", "027016"}, {"PORT", "65536"},
 		{"CS16_ALLOWED_ORIGINS", "*"}, {"CS16_ADMIN_TOKEN", "short"},
 		{"CS16_PLAYER_BROKER_TOKEN", "short"}, {"CS16_PLAYER_BROKER_TOKEN", testAdminToken},
+		{"CS16_RCON_PASSWORD", `pa"ss`}, {"CS16_RCON_PASSWORD", "pa ss"}, {"CS16_RCON_PASSWORD", "pass;quit"},
+		{"CS16_RCON_PASSWORD", strings.Repeat("a", 65)}, {"CS16_RCON_PASSWORD", testAdminToken},
 	} {
 		t.Run(check.key+"="+check.value, func(t *testing.T) {
 			t.Setenv(check.key, check.value)

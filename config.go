@@ -21,7 +21,7 @@ const (
 
 type config struct {
 	httpPort, icePort, adminToken, mapName, maxPlayers, gameDir string
-	playerBrokerToken                                           string
+	playerBrokerToken, rconPassword                             string
 	allowedOrigins                                              map[string]bool
 }
 
@@ -37,6 +37,7 @@ func loadConfig() (config, error) {
 		httpPort: env("PORT", "8080"), icePort: env("ICE_TCP_PORT", "8443"),
 		adminToken: os.Getenv("CS16_ADMIN_TOKEN"), mapName: env("CS16_START_MAP", "de_dust2"),
 		playerBrokerToken: os.Getenv("CS16_PLAYER_BROKER_TOKEN"),
+		rconPassword:      os.Getenv("CS16_RCON_PASSWORD"),
 		maxPlayers:        env("CS16_MAXPLAYERS", "16"), gameDir: env("CS16_GAME_DIR", "/xashds"),
 		allowedOrigins: make(map[string]bool),
 	}
@@ -45,6 +46,15 @@ func loadConfig() (config, error) {
 	}
 	if c.playerBrokerToken != "" && (len(c.playerBrokerToken) < 32 || c.playerBrokerToken == c.adminToken) {
 		return c, errors.New("CS16_PLAYER_BROKER_TOKEN must be a separate private random value of at least 32 characters")
+	}
+	// Operator decision (BLD-024): no strength rule, only a format that cannot break out of the cfg line.
+	if c.rconPassword != "" {
+		if !regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`).MatchString(c.rconPassword) {
+			return c, errors.New("CS16_RCON_PASSWORD may use only letters, digits, _ and -, up to 64 characters")
+		}
+		if c.rconPassword == c.adminToken || c.rconPassword == c.playerBrokerToken {
+			return c, errors.New("CS16_RCON_PASSWORD must differ from CS16_ADMIN_TOKEN and CS16_PLAYER_BROKER_TOKEN")
+		}
 	}
 	var ports []int
 	for _, port := range []string{c.httpPort, c.icePort} {

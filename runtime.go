@@ -45,13 +45,18 @@ func childEnvironment(parent []string) []string {
 }
 
 func prepareRuntimeConfig(c config) error {
-	var secret [32]byte
-	if _, err := rand.Read(secret[:]); err != nil {
-		return err
+	// CS16_RCON_PASSWORD turns on in-game rcon (BLD-024). Unset keeps a fresh unexposed value, so rcon stays off.
+	rconPassword := c.rconPassword
+	if rconPassword == "" {
+		var secret [32]byte
+		if _, err := rand.Read(secret[:]); err != nil {
+			return err
+		}
+		rconPassword = hex.EncodeToString(secret[:])
 	}
 	// Fresh copied runtime only. The upstream config is not changed in its repo.
 	configPath := filepath.Join(c.gameDir, "cstrike", "FX_CS16_server.cfg")
-	content := "hostname \"FX_CS16\"\nsv_lan 0\npublic 0\nrcon_password \"" + hex.EncodeToString(secret[:]) + "\"\n"
+	content := "hostname \"FX_CS16\"\nsv_lan 0\npublic 0\nrcon_password \"" + rconPassword + "\"\n"
 	if err := os.WriteFile(configPath, []byte(content), 0600); err != nil {
 		return err
 	}

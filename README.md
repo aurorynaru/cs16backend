@@ -76,6 +76,7 @@ is required. Details and the original map README are in `custom-maps/`.
    | `CS16_ADMIN_TOKEN` | Your own private random value, at least 32 characters |
    | `CS16_START_MAP` | `de_dust2` (default) |
    | `CS16_MAXPLAYERS` | `16` (default; initial package accepts 2–16) |
+   | `CS16_RCON_PASSWORD` | Optional. Turns on in-game rcon (see below); letters, digits, `_`, `-`, up to 64 characters |
 
    Set the actual token only in Railway Variables. Do not put it into GitHub,
    screenshots, Markdown, the Mongoose asset, or a shared URL. The diagnostic
@@ -141,14 +142,33 @@ liveness. The engine process exiting stops the gateway so Railway can restart it
   random 256-bit tickets, valid for 60 seconds and usable once. Existing sessions
   do not expire after 60 seconds; that is a handshake/ticket window.
 - The native child does not inherit the admin token or Railway/public port vars.
-  An owned `FX_CS16_server.cfg` sets the hostname, keeps `sv_lan 0`, and assigns a
-  fresh unexposed RCON password on startup. Existing game rules otherwise follow
+  An owned `FX_CS16_server.cfg` sets the hostname, keeps `sv_lan 0`, and assigns the
+  RCON password: `CS16_RCON_PASSWORD` when set, otherwise a fresh unexposed random value (rcon off). Existing game rules otherwise follow
   the pinned runtime. No game configuration/state persistence is added here.
 - Cross-origin requests are denied by default. `CS16_ALLOWED_ORIGINS` accepts
   comma-separated **exact origins**, never `*`; step 2 will set the actual
   Mongoose origin as needed. The diagnostic works same-origin without that var.
 - Audio from the game runs in the future browser client. WebRTC voice-chat track
   relaying is not implemented by this gateway.
+
+## In-game server console (rcon, BLD-024)
+
+Set `CS16_RCON_PASSWORD` in Railway Variables and redeploy. Then, in the game, open the console
+with the `` ` `` key and type:
+
+```
+rcon_password <your CS16_RCON_PASSWORD>
+rcon status
+rcon mp_timelimit 0
+rcon changelevel cs_deathmatch
+```
+
+- Any server command is allowed. Anyone who knows the password controls the game server
+  (map, rules, kicks, `quit`), but not the container. A short password is accepted on purpose
+  (operator decision, 2026-11-06); pick a longer one if strangers can reach the server.
+- Changes made over rcon last until the game server restarts or Railway redeploys. Put anything
+  permanent in Railway Variables.
+- Leave the variable unset to keep rcon off.
 
 ## Validation and troubleshooting
 
