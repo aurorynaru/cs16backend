@@ -8,9 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -359,6 +361,53 @@ func TestBridgePreservesBinaryPacketsAndIsolatesClients(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("disconnect did not release native peers and gateway slots")
+}
+
+// lockedBuffer lets the test read log output while session goroutines write it.
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+func TestActiveSessionLogsPeriodicStats(t *testing.T) {
+	logs := &lockedBuffer{}
+	log.SetOutput(logs)
+	previousInterval := statsInterval
+	statsInterval = 50 * time.Millisecond
+	t.Cleanup(func() { log.SetOutput(os.Stderr); statsInterval = previousInterval })
+
+	backend, _ := syntheticBackend(t)
+	deployment := startTestGateway(t, strings.Replace(backend.URL, "http", "ws", 1))
+	client := openTestClient(t, deployment)
+	defer client.close()
+	if err := client.send.Send([]byte{1, 2, 3}); err != nil {
+		t.Fatal(err)
+	}
+	receivePacket(t, client)
+
+	deadline := time.Now().Add(handshakeTimeout / 12)
+	for time.Now().Before(deadline) {
+		for _, line := range strings.Split(logs.String(), "\n") {
+			if strings.Contains(line, " stats ") && strings.Contains(line, "down=+1 ") {
+				t.Logf("stats line: %s", line[strings.Index(line, "session"):])
+				return
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("no periodic stats line with the forwarded packet; logs:\n%s", logs.String())
 }
 
 func TestPublicRoutesRequireAdmissionAndDoNotExposeRuntimeFiles(t *testing.T) {

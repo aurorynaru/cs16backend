@@ -19,6 +19,10 @@ const (
 	maxBufferedBytes = 262144           // Existing Global-Strike client backpressure limit.
 )
 
+// How often each active session logs its packet/backlog/RTT stats (BLD-025).
+// A variable only so tests can shorten it.
+var statsInterval = 10 * time.Second
+
 type config struct {
 	httpPort, icePort, adminToken, mapName, maxPlayers, gameDir string
 	playerBrokerToken, rconPassword                             string

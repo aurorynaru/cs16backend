@@ -212,6 +212,27 @@ Railway diagnostics:
   ends. A closure after `PASS_GAME_QUERY` and slot cleanup does not undo the query
   result; inspect the preceding connection/query messages before diagnosing it.
 
+## Lag diagnostics (BLD-025)
+
+Every active game session writes one line to the Deploy Logs every 10 seconds (skipped when idle):
+
+```text
+session 7 stats 10s: down=+620 up=+610 dropped=+0 buffered=0B queue=0/0 rtt=38.2ms
+```
+
+- `down`/`up`: packets sent to the browser / to the game in that interval.
+- `dropped`: packets discarded because the backlog was full. Any value above 0 means the player's
+  connection stalled.
+- `buffered`: bytes waiting to go out to the browser; `queue`: packets waiting toward the browser / the game.
+  Values that keep growing mean the browser's TCP connection isn't keeping up.
+- `rtt`: latest round-trip time between the gateway and the browser through the Railway TCP proxy
+  (`n/a` until measured).
+
+Game traffic reaches the browser over TCP only (Railway TCP Proxy). On a network that loses packets, TCP
+retransmits and holds back later packets, so the game freezes and then catches up in a burst. Compare the
+stats of a lagging player with a smooth one: drops, a growing backlog or RTT spikes only on the lagging
+player point to their network, not the server.
+
 ## Mongoose player access (BLD-012)
 
 The Mongoose launcher uses a separate trusted player broker. Add a new private

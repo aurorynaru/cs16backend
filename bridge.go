@@ -130,6 +130,43 @@ func (s *bridgeSession) forward(queue <-chan []byte, ready <-chan struct{}, targ
 	}
 }
 
+// reportStats logs per-interval traffic, drops, backlog and browser-side RTT so
+// lag on one player's network shows up in the deploy logs (BLD-025).
+// It writes nothing for an interval in which no packet moved or was dropped.
+func (s *bridgeSession) reportStats() {
+	ticker := time.NewTicker(statsInterval)
+	defer ticker.Stop()
+	var lastUp, lastDown, lastDropped uint64
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		up, down, dropped := s.up.Load(), s.down.Load(), s.dropped.Load()
+		if up == lastUp && down == lastDown && dropped == lastDropped {
+			continue
+		}
+		log.Printf("session %d stats %s: down=+%d up=+%d dropped=+%d buffered=%dB queue=%d/%d rtt=%s",
+			s.id, statsInterval, down-lastDown, up-lastUp, dropped-lastDropped,
+			s.frontWrite.BufferedAmount(), len(s.toBrowser), len(s.toGame), s.browserRTT())
+		lastUp, lastDown, lastDropped = up, down, dropped
+	}
+}
+
+// browserRTT returns the latest round-trip time of the selected browser-side
+// ICE pair, or "n/a" when Pion has not measured one.
+func (s *bridgeSession) browserRTT() string {
+	for _, stat := range s.front.GetStats() {
+		pair, ok := stat.(webrtc.ICECandidatePairStats)
+		if !ok || !pair.Nominated || pair.CurrentRoundTripTime <= 0 {
+			continue
+		}
+		return fmt.Sprintf("%.1fms", pair.CurrentRoundTripTime*1000)
+	}
+	return "n/a"
+}
+
 func (s *bridgeSession) watchConnection(pc *webrtc.PeerConnection, side string) {
 	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		log.Printf("session %d %s WebRTC: %s", s.id, side, state)
@@ -414,6 +451,7 @@ func (s *bridgeSession) serve(frontAPI, backAPI *webrtc.API, target endpoint, up
 		return errors.New("browser TCP data-channel setup timed out")
 	case <-s.browserReady:
 	}
+	go s.reportStats()
 	<-s.ctx.Done()
 	return nil
 }
