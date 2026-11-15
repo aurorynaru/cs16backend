@@ -1,15 +1,60 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
+
+// A slow download must outlive the server-wide WriteTimeout (BLD-025): on a
+// shared office line the real bundle can take longer than 120 seconds.
+func TestSlowGameAssetDownloadOutlivesServerWriteTimeout(t *testing.T) {
+	dir := t.TempDir()
+	public := filepath.Join(dir, "public")
+	if err := os.Mkdir(public, 0700); err != nil {
+		t.Fatal(err)
+	}
+	bundle := bytes.Repeat([]byte("FX_CS16"), 1<<20) // About 7 MB, more than socket buffers hold.
+	if err := os.WriteFile(filepath.Join(public, "gamefiles.zip"), bundle, 0600); err != nil {
+		t.Fatal(err)
+	}
+	g := newGateway(context.Background(), config{adminToken: testAdminToken, maxPlayers: "2", gameDir: dir}, nil)
+	server := httptest.NewUnstartedServer(g.handler())
+	server.Config.WriteTimeout = 100 * time.Millisecond // Stands in for the production 120 s.
+	server.Start()
+	defer server.Close()
+
+	request, _ := http.NewRequest("GET", server.URL+"/cs16/gamefiles.zip", nil)
+	request.Header.Set("Authorization", "Bearer "+testAdminToken)
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	received, chunk := 0, make([]byte, 256<<10)
+	for {
+		time.Sleep(20 * time.Millisecond) // About 30 reads: well past the 100 ms timeout.
+		n, err := response.Body.Read(chunk)
+		received += n
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("download cut off after %d of %d bytes: %v", received, len(bundle), err)
+		}
+	}
+	if received != len(bundle) {
+		t.Fatalf("download cut off after %d of %d bytes", received, len(bundle))
+	}
+}
 
 func TestGameAssetCacheInvalidatesSameLengthUpdate(t *testing.T) {
 	dir := t.TempDir()

@@ -132,39 +132,64 @@ func (s *bridgeSession) forward(queue <-chan []byte, ready <-chan struct{}, targ
 
 // reportStats logs per-interval traffic, drops, backlog and browser-side RTT so
 // lag on one player's network shows up in the deploy logs (BLD-025).
+// Backlog and RTT are sampled every statsSampleInterval, so the max* fields
+// catch short stalls that a single end-of-interval snapshot would miss.
 // It writes nothing for an interval in which no packet moved or was dropped.
 func (s *bridgeSession) reportStats() {
-	ticker := time.NewTicker(statsInterval)
-	defer ticker.Stop()
+	sampler := time.NewTicker(statsSampleInterval)
+	defer sampler.Stop()
+	reporter := time.NewTicker(statsInterval)
+	defer reporter.Stop()
 	var lastUp, lastDown, lastDropped uint64
+	var maxBuffered uint64
+	var maxToBrowser, maxToGame int
+	var maxRTT float64
+	sample := func() {
+		maxBuffered = max(maxBuffered, s.frontWrite.BufferedAmount())
+		maxToBrowser = max(maxToBrowser, len(s.toBrowser))
+		maxToGame = max(maxToGame, len(s.toGame))
+		maxRTT = max(maxRTT, s.browserRTT())
+	}
 	for {
 		select {
 		case <-s.ctx.Done():
 			return
-		case <-ticker.C:
+		case <-sampler.C:
+			sample()
+			continue
+		case <-reporter.C:
 		}
 		up, down, dropped := s.up.Load(), s.down.Load(), s.dropped.Load()
-		if up == lastUp && down == lastDown && dropped == lastDropped {
-			continue
+		if up != lastUp || down != lastDown || dropped != lastDropped {
+			buffered, rtt := s.frontWrite.BufferedAmount(), s.browserRTT()
+			sample()
+			log.Printf("session %d stats %s: down=+%d up=+%d dropped=+%d buffered=%dB maxBuffered=%dB queue=%d/%d maxQueue=%d/%d rtt=%s maxRtt=%s",
+				s.id, statsInterval, down-lastDown, up-lastUp, dropped-lastDropped,
+				buffered, maxBuffered, len(s.toBrowser), len(s.toGame), maxToBrowser, maxToGame,
+				formatRTT(rtt), formatRTT(maxRTT))
 		}
-		log.Printf("session %d stats %s: down=+%d up=+%d dropped=+%d buffered=%dB queue=%d/%d rtt=%s",
-			s.id, statsInterval, down-lastDown, up-lastUp, dropped-lastDropped,
-			s.frontWrite.BufferedAmount(), len(s.toBrowser), len(s.toGame), s.browserRTT())
 		lastUp, lastDown, lastDropped = up, down, dropped
+		maxBuffered, maxToBrowser, maxToGame, maxRTT = 0, 0, 0, 0
 	}
 }
 
-// browserRTT returns the latest round-trip time of the selected browser-side
-// ICE pair, or "n/a" when Pion has not measured one.
-func (s *bridgeSession) browserRTT() string {
+// browserRTT returns the latest round-trip time, in seconds, of the selected
+// browser-side ICE pair, or 0 when Pion has not measured one.
+func (s *bridgeSession) browserRTT() float64 {
 	for _, stat := range s.front.GetStats() {
 		pair, ok := stat.(webrtc.ICECandidatePairStats)
-		if !ok || !pair.Nominated || pair.CurrentRoundTripTime <= 0 {
-			continue
+		if ok && pair.Nominated && pair.CurrentRoundTripTime > 0 {
+			return pair.CurrentRoundTripTime
 		}
-		return fmt.Sprintf("%.1fms", pair.CurrentRoundTripTime*1000)
 	}
-	return "n/a"
+	return 0
+}
+
+func formatRTT(seconds float64) string {
+	if seconds <= 0 {
+		return "n/a"
+	}
+	return fmt.Sprintf("%.1fms", seconds*1000)
 }
 
 func (s *bridgeSession) watchConnection(pc *webrtc.PeerConnection, side string) {

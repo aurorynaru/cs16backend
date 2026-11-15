@@ -6,11 +6,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // The immutable image build hashes the complete browser bundle. Its ETag lets
 // the existing client invalidate cached assets even if two ZIPs have equal size.
 func (g *gateway) gameFiles(w http.ResponseWriter, r *http.Request) {
+	// The server-wide WriteTimeout (120 s) would cut off a large bundle on a slow
+	// or shared connection; give this response its own longer bound (BLD-025).
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(assetDownloadTimeout))
 	publicDir := filepath.Join(g.config.gameDir, "public")
 	if data, err := os.ReadFile(filepath.Join(publicDir, "gamefiles.sha256")); err == nil {
 		digest := strings.TrimSpace(string(data))

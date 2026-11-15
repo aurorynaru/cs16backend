@@ -217,7 +217,7 @@ Railway diagnostics:
 Every active game session writes one line to the Deploy Logs every 10 seconds (skipped when idle):
 
 ```text
-session 7 stats 10s: down=+620 up=+610 dropped=+0 buffered=0B queue=0/0 rtt=38.2ms
+session 7 stats 10s: down=+620 up=+610 dropped=+0 buffered=0B maxBuffered=4096B queue=0/0 maxQueue=3/0 rtt=38.2ms maxRtt=210.0ms
 ```
 
 - `down`/`up`: packets sent to the browser / to the game in that interval.
@@ -227,6 +227,13 @@ session 7 stats 10s: down=+620 up=+610 dropped=+0 buffered=0B queue=0/0 rtt=38.2
   Values that keep growing mean the browser's TCP connection isn't keeping up.
 - `rtt`: latest round-trip time between the gateway and the browser through the Railway TCP proxy
   (`n/a` until measured).
+- `max…`: the highest value seen in that interval (sampled every second). A short freeze shows up here
+  even when the end-of-interval values look normal.
+- `up` near `+10` (one packet per second) while `down` continues: the player's game is barely running
+  (very low FPS, or a hidden or power-throttled browser tab). That is the device, not the network.
+
+The game bundle download (`gamefiles.zip`) may run for up to 30 minutes. Other responses keep the 120-second
+server write limit; before BLD-025 the download had that limit too and failed on slow or shared networks.
 
 Game traffic reaches the browser over TCP only (Railway TCP Proxy). On a network that loses packets, TCP
 retransmits and holds back later packets, so the game freezes and then catches up in a burst. Compare the

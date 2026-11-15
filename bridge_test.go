@@ -384,9 +384,12 @@ func (b *lockedBuffer) String() string {
 func TestActiveSessionLogsPeriodicStats(t *testing.T) {
 	logs := &lockedBuffer{}
 	log.SetOutput(logs)
-	previousInterval := statsInterval
-	statsInterval = 50 * time.Millisecond
-	t.Cleanup(func() { log.SetOutput(os.Stderr); statsInterval = previousInterval })
+	previousInterval, previousSample := statsInterval, statsSampleInterval
+	statsInterval, statsSampleInterval = 50*time.Millisecond, 10*time.Millisecond
+	t.Cleanup(func() {
+		log.SetOutput(os.Stderr)
+		statsInterval, statsSampleInterval = previousInterval, previousSample
+	})
 
 	backend, _ := syntheticBackend(t)
 	deployment := startTestGateway(t, strings.Replace(backend.URL, "http", "ws", 1))
@@ -401,6 +404,11 @@ func TestActiveSessionLogsPeriodicStats(t *testing.T) {
 	for time.Now().Before(deadline) {
 		for _, line := range strings.Split(logs.String(), "\n") {
 			if strings.Contains(line, " stats ") && strings.Contains(line, "down=+1 ") {
+				for _, field := range []string{" maxBuffered=", " maxQueue=", " maxRtt="} {
+					if !strings.Contains(line, field) {
+						t.Fatalf("stats line lacks %q: %s", field, line)
+					}
+				}
 				t.Logf("stats line: %s", line[strings.Index(line, "session"):])
 				return
 			}

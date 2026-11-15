@@ -17,11 +17,16 @@ const (
 	maxPacketSize    = 8192             // Upstream's ReadLoop messageSize.
 	packetQueueSize  = 24               // Existing Global-Strike client's bounded queue.
 	maxBufferedBytes = 262144           // Existing Global-Strike client backpressure limit.
+
+	assetDownloadTimeout = 30 * time.Minute // Game bundle download bound on slow/shared networks (BLD-025).
 )
 
-// How often each active session logs its packet/backlog/RTT stats (BLD-025).
-// A variable only so tests can shorten it.
-var statsInterval = 10 * time.Second
+// Session stats (BLD-025): sample backlog/RTT every statsSampleInterval and log
+// one line per statsInterval. Variables only so tests can shorten them.
+var (
+	statsInterval       = 10 * time.Second
+	statsSampleInterval = time.Second
+)
 
 type config struct {
 	httpPort, icePort, adminToken, mapName, maxPlayers, gameDir string
